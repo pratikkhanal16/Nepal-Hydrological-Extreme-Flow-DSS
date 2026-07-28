@@ -1011,15 +1011,19 @@ with tab_map:
     lat = float(meta["Latitude"])
     lon = float(meta["Longitude"])
 
-    scatter_layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=map_df,
-        get_position="[Longitude, Latitude]",
-        get_radius="radius",
-        pickable=True,
-        auto_highlight=True,
-        get_fill_color="@@=selected ? [220, 38, 38, 220] : [37, 99, 235, 150]"
-    )
+map_df["fill_color"] = map_df["selected"].apply(
+    lambda sel: [220, 38, 38, 220] if sel else [37, 99, 235, 150]
+)
+
+scatter_layer = pdk.Layer(
+    "ScatterplotLayer",
+    data=map_df,
+    get_position="[Longitude, Latitude]",
+    get_radius="radius",
+    pickable=True,
+    auto_highlight=True,
+    get_fill_color="fill_color"
+)
 
     text_layer = pdk.Layer(
         "TextLayer",
