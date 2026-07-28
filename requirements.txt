@@ -5,3 +5,5 @@ scipy
 plotly
 pydeck
 openpyxl
+folium
+streamlit-folium
