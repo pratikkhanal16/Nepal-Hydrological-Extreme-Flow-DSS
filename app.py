@@ -864,94 +864,248 @@ with tab_compare:
         st.info("Select at least one station above to compare.")
 
 # ============================================================
-# MAP TAB
+# MAP TAB — OPENSTREETMAP VERSION
 # ============================================================
+
+import folium
+from folium.plugins import Fullscreen, MarkerCluster
+
+
 with tab_map:
 
     st.markdown("#### DHM Streamflow Station Map")
 
+    # --------------------------------------------------------
+    # Select map data
+    # --------------------------------------------------------
+
     map_df = stations.copy()
+
     if not show_all_stations:
-        map_df = map_df[map_df["Station"] == station_id].copy()
+        map_df = map_df[
+            map_df["Station"] == station_id
+        ].copy()
 
-    map_df["selected"] = map_df["Station"] == station_id
-    map_df["radius"] = np.where(map_df["selected"], 14000, 5000)
-    map_df["fill_color"] = map_df["selected"].apply(
-        lambda sel: [250, 204, 21, 235] if sel else [56, 189, 248, 140]
+    # --------------------------------------------------------
+    # Selected station coordinates
+    # --------------------------------------------------------
+
+    lat = (
+        float(meta["Latitude"])
+        if pd.notna(meta.get("Latitude"))
+        else 28.0
     )
 
-    elev_col = "Elevation_m" if "Elevation_m" in map_df.columns else None
-    if elev_col:
-        map_df["elev_scaled"] = pd.to_numeric(map_df[elev_col], errors="coerce").fillna(0) * 15
-    else:
-        map_df["elev_scaled"] = 0
-
-    map_df["label"] = (
-        "Station " + map_df["Station"].astype(str) + " | " +
-        map_df["River"].astype(str) + " | " + map_df["Location"].astype(str)
+    lon = (
+        float(meta["Longitude"])
+        if pd.notna(meta.get("Longitude"))
+        else 84.0
     )
 
-    lat = float(meta["Latitude"]) if pd.notna(meta.get("Latitude")) else 28.0
-    lon = float(meta["Longitude"]) if pd.notna(meta.get("Longitude")) else 84.0
+    # --------------------------------------------------------
+    # Create OpenStreetMap
+    # --------------------------------------------------------
 
-    layers = []
+    m = folium.Map(
+        location=[lat, lon],
+        zoom_start=8,
+        tiles="OpenStreetMap",
+        control_scale=True
+    )
 
-    if map_style_3d and elev_col:
-        column_layer = pdk.Layer(
-            "ColumnLayer",
-            data=map_df,
-            get_position="[Longitude, Latitude]",
-            get_elevation="elev_scaled",
-            elevation_scale=1,
-            radius=6000,
-            get_fill_color="fill_color",
-            pickable=True,
-            auto_highlight=True,
+    # Full screen button
+    Fullscreen(
+        position="topright",
+        title="Full Screen",
+        title_cancel="Exit Full Screen",
+        force_separate_button=True
+    ).add_to(m)
+
+    # --------------------------------------------------------
+    # Optional alternative basemaps
+    # --------------------------------------------------------
+
+    folium.TileLayer(
+        tiles="CartoDB positron",
+        name="Light Map",
+        control=True
+    ).add_to(m)
+
+    folium.TileLayer(
+        tiles="CartoDB dark_matter",
+        name="Dark Map",
+        control=True
+    ).add_to(m)
+
+    folium.TileLayer(
+        tiles=(
+            "https://{s}.tile.opentopomap.org/"
+            "{z}/{x}/{y}.png"
+        ),
+        attr=(
+            "Map data © OpenStreetMap contributors, "
+            "SRTM | Map style © OpenTopoMap"
+        ),
+        name="Terrain",
+        control=True
+    ).add_to(m)
+
+    # --------------------------------------------------------
+    # Marker cluster for all stations
+    # --------------------------------------------------------
+
+    cluster = MarkerCluster(
+        name="DHM Stations"
+    ).add_to(m)
+
+    # --------------------------------------------------------
+    # Add station markers
+    # --------------------------------------------------------
+
+    for _, row in map_df.iterrows():
+
+        sid = str(row["Station"])
+
+        is_selected = (
+            sid == str(station_id)
         )
-        layers.append(column_layer)
-    else:
-        scatter_layer = pdk.Layer(
-            "ScatterplotLayer",
-            data=map_df,
-            get_position="[Longitude, Latitude]",
-            get_radius="radius",
-            pickable=True,
-            auto_highlight=True,
-            get_fill_color="fill_color"
+
+        marker_color = (
+            "red"
+            if is_selected
+            else "blue"
         )
-        layers.append(scatter_layer)
 
-    text_layer = pdk.Layer(
-        "TextLayer",
-        data=map_df[map_df["selected"]],
-        get_position="[Longitude, Latitude]",
-        get_text="label",
-        get_size=16,
-        get_color=[241, 248, 255, 255],
-        get_alignment_baseline="'bottom'",
-        pickable=False
-    )
-    layers.append(text_layer)
+        radius = (
+            9
+            if is_selected
+            else 5
+        )
 
-    view_state = pdk.ViewState(
-        latitude=lat, longitude=lon,
-        zoom=7.2, pitch=45 if map_style_3d else 0, bearing=0
-    )
+        popup_html = f"""
+        <div style="
+            width:260px;
+            font-family:Arial;
+        ">
 
-    deck = pdk.Deck(
-        layers=layers,
-        initial_view_state=view_state,
-        map_style="mapbox://styles/mapbox/dark-v10",
-        tooltip={
-            "html": (
-                "<b>{label}</b><br/>Elevation: {Elevation_m} m<br/>"
-                "Drainage area: {Drainage_Area_km2} km²<br/>Lat: {Latitude}<br/>Lon: {Longitude}"
+        <h4 style="
+            margin-bottom:8px;
+            color:#0f3557;
+        ">
+            DHM Station {sid}
+        </h4>
+
+        <b>River:</b>
+        {row.get('River', 'NA')}<br>
+
+        <b>Location:</b>
+        {row.get('Location', 'NA')}<br>
+
+        <b>Latitude:</b>
+        {row.get('Latitude', 'NA')}<br>
+
+        <b>Longitude:</b>
+        {row.get('Longitude', 'NA')}<br>
+
+        <b>Elevation:</b>
+        {row.get('Elevation_m', 'NA')} m<br>
+
+        <b>Drainage Area:</b>
+        {row.get('Drainage_Area_km2', 'NA')} km²<br>
+
+        <b>Record:</b>
+        {row.get('Published_From', 'NA')}
+        –
+        {row.get('Published_To', 'NA')}
+
+        </div>
+        """
+
+        folium.CircleMarker(
+
+            location=[
+                row["Latitude"],
+                row["Longitude"]
+            ],
+
+            radius=radius,
+
+            color=marker_color,
+
+            weight=2,
+
+            fill=True,
+
+            fill_color=marker_color,
+
+            fill_opacity=0.85,
+
+            tooltip=(
+                f"Station {sid} | "
+                f"{row.get('River', '')} | "
+                f"{row.get('Location', '')}"
+            ),
+
+            popup=folium.Popup(
+                popup_html,
+                max_width=320
             )
-        }
+
+        ).add_to(cluster)
+
+    # --------------------------------------------------------
+    # Highlight selected station separately
+    # --------------------------------------------------------
+
+    selected_popup = f"""
+    <b>Selected Station {station_id}</b><br>
+    River: {meta.get('River', 'NA')}<br>
+    Location: {meta.get('Location', 'NA')}
+    """
+
+    folium.Marker(
+
+        location=[lat, lon],
+
+        tooltip=(
+            f"Selected Station {station_id}"
+        ),
+
+        popup=selected_popup,
+
+        icon=folium.Icon(
+            color="red",
+            icon="info-sign"
+        )
+
+    ).add_to(m)
+
+    # --------------------------------------------------------
+    # Layer control
+    # --------------------------------------------------------
+
+    folium.LayerControl(
+        collapsed=False
+    ).add_to(m)
+
+    # --------------------------------------------------------
+    # Show map in Streamlit
+    # --------------------------------------------------------
+
+    from streamlit_folium import st_folium
+
+    st_folium(
+        m,
+        width=None,
+        height=650,
+        use_container_width=True
     )
 
-    st.pydeck_chart(deck, use_container_width=True)
-    st.caption("🟡 Selected station · 🔵 Other DHM stations" + (" · column height ≈ elevation" if map_style_3d else ""))
+    st.caption(
+        "🔴 Selected station · 🔵 Other DHM stations · "
+        "Use the layer control to switch between OpenStreetMap, "
+        "terrain, light, and dark basemaps."
+    )
 
 # ============================================================
 # EXPORT TAB
