@@ -1018,11 +1018,7 @@ with tab_map:
         get_radius="radius",
         pickable=True,
         auto_highlight=True,
-        get_fill_color="""
-            selected
-            ? [220, 38, 38, 220]
-            : [37, 99, 235, 150]
-        """
+        get_fill_color="@@=selected ? [220, 38, 38, 220] : [37, 99, 235, 150]"
     )
 
     text_layer = pdk.Layer(
